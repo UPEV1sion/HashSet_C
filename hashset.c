@@ -73,7 +73,7 @@ int hs_resize(const HashSet hs)
     size_t new_capacity = hs->capacity * 2;
     if (new_capacity > MAX_CAPACITY)
         new_capacity = MAX_CAPACITY;
-    if (new_capacity >= MAX_CAPACITY * LOAD_FACTOR)
+    if (hs->size >= MAX_CAPACITY * LOAD_FACTOR)
         return 1;
     Bucket **new_buckets = realloc(hs->buckets, new_capacity * sizeof(Bucket *));
     assert(new_buckets != NULL);
