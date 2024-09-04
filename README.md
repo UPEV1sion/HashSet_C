@@ -1,6 +1,6 @@
 # HashSet implementation in C
 
-A very performant, fairly lightweight `HashSet` implementation in C.
+A performant, fairly lightweight `HashSet` implementation in C.
 
 > **_NOTE:_**  This `HashSet` implementation solely relies on a "Array of `Linked List`s" implementation. "Treeifying" a node after a certain threshold yielded a negative performance impact from the extensive testing needed. Therefore, the current implementation does not support "treeifying".
 
