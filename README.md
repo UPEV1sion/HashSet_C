@@ -171,9 +171,9 @@ int hs_remove(HashSet hs, const void *key);
 
 | Operation   | Average Time (100,000 elements) |
 |-------------|---------------------------------|
-| Insertion   | 0.005687 seconds                |
-| Lookup      | 0.003585 seconds                |
-| Deletion    | 0.002849 seconds                |
+| Insertion   | 0.007460 seconds                |
+| Lookup      | 0.003630 seconds                |
+| Deletion    | 0.003446 seconds                |
 
 ---
 
