@@ -5,7 +5,7 @@
 #include "hashset.h"
 
 //
-// Created by Emanuel on 03.09.2024.
+// Created by Emanuel on 05.09.2024.
 //
 
 #define MIN_CAPACITY (1 << 4)
@@ -16,10 +16,9 @@ typedef enum { ACTIVE, TOMBSTONE } BucketStatus;
 
 typedef struct Bucket
 {
-    void *key;
     size_t hash;
-    struct Bucket *next;
     BucketStatus status;
+    char key[];
 } Bucket;
 
 struct HashSet
@@ -27,32 +26,16 @@ struct HashSet
     size_t size;
     size_t capacity;
     size_t key_size;
+    size_t bucket_size;
 
     hash hash_func;
-    Bucket **buckets;
+    Bucket *buckets;
 };
 
-Bucket* create_bucket(const void *key, const size_t key_size, const size_t hash)
+static size_t _hash(const void *key, const size_t key_size)
 {
-    Bucket *bucket = malloc(sizeof(Bucket));
-    assert(bucket != NULL);
-
-    bucket->key = malloc(key_size);
-    assert(bucket->key != NULL);
-    memcpy(bucket->key, key, key_size);
-
-    bucket->hash   = hash;
-    bucket->status = ACTIVE;
-    bucket->next   = NULL;
-
-    return bucket;
-}
-
-size_t _hash(const void *key, const size_t key_size)
-{
-    //DJB2 hash func variation
     const unsigned char *data = key;
-    size_t hash               = 5381;
+    size_t hash = 5381;
 
     for (size_t i = 0; i < key_size; ++i)
     {
@@ -62,45 +45,46 @@ size_t _hash(const void *key, const size_t key_size)
     return hash;
 }
 
-double calc_load_fac(const HashSet hs)
+static inline double calc_load_fac(const HashSet hs)
 {
     return (double) hs->size / hs->capacity;
 }
 
-
 int hs_resize(const HashSet hs)
 {
     size_t new_capacity = hs->capacity * 2;
-    if (new_capacity > MAX_CAPACITY)
-        new_capacity = MAX_CAPACITY;
-    if (hs->size >= MAX_CAPACITY * LOAD_FACTOR)
+    if (new_capacity > MAX_CAPACITY) new_capacity = MAX_CAPACITY;
+    if (new_capacity >= MAX_CAPACITY * LOAD_FACTOR)
         return 1;
-    Bucket **new_buckets = realloc(hs->buckets, new_capacity * sizeof(Bucket *));
+
+    Bucket *new_buckets = calloc(new_capacity, hs->bucket_size);
     assert(new_buckets != NULL);
-    memset(new_buckets + hs->capacity, 0, (new_capacity - hs->capacity) * sizeof(Bucket *));
-    hs->buckets = new_buckets;
+
+    for (size_t i = 0; i < new_capacity; ++i)
+    {
+        Bucket *bucket = new_buckets + i;
+        bucket->status = TOMBSTONE;
+        bucket->hash = 0;
+    }
 
     for (size_t i = 0; i < hs->capacity; i++)
     {
-        Bucket *bucket = new_buckets[i];
-        new_buckets[i] = NULL;
-        while (bucket != NULL)
+        Bucket *bucket = hs->buckets + i;
+        if (bucket->status == ACTIVE)
         {
-            Bucket *next = bucket->next;
-            if (bucket->status == ACTIVE)
+            size_t new_hash = hs->hash_func(bucket->key, hs->key_size) % new_capacity;
+            Bucket *new_bucket = new_buckets + new_hash;
+            while (new_bucket->status == ACTIVE)
             {
-                const size_t hash = hs->hash_func(bucket->key, hs->key_size) % new_capacity;
-                bucket->next      = new_buckets[hash];
-                new_buckets[hash] = bucket;
+                new_hash = (new_hash + 1) % new_capacity;
+                new_bucket = new_buckets + new_hash;
             }
-            else
-            {
-                free(bucket->key);
-                free(bucket);
-            }
-            bucket = next;
+            memcpy(new_bucket, bucket, hs->bucket_size);
         }
     }
+
+    free(hs->buckets);
+    hs->buckets = new_buckets;
     hs->capacity = new_capacity;
 
     return 0;
@@ -110,28 +94,28 @@ HashSet hs_create(const size_t hs_capacity, const size_t key_size, const hash ha
 {
     const HashSet hs = malloc(sizeof(*hs));
     assert(hs != NULL);
+
     hs->hash_func = hash_func == NULL ? _hash : hash_func;
     hs->capacity = (hs_capacity < MIN_CAPACITY) ? MIN_CAPACITY : hs_capacity;
-    hs->buckets  = calloc(hs->capacity, sizeof(Bucket *));
+    hs->bucket_size = sizeof(Bucket) + key_size;
+    hs->buckets = malloc(hs->capacity * hs->bucket_size);
     assert(hs->buckets != NULL);
-    hs->size       = 0;
-    hs->key_size   = key_size;
+
+    hs->size = 0;
+    hs->key_size = key_size;
+
+    for (size_t i = 0; i < hs->capacity; ++i)
+    {
+        Bucket *bucket = hs->buckets + i;
+        bucket->status = TOMBSTONE;
+        bucket->hash = 0;
+    }
 
     return hs;
 }
 
 int hs_destroy(const HashSet hs)
 {
-    for (size_t i = 0; i < hs->capacity; ++i)
-    {
-        for (Bucket *bucket = hs->buckets[i]; bucket != NULL;)
-        {
-            Bucket *next = bucket->next;
-            free(bucket->key);
-            free(bucket);
-            bucket = next;
-        }
-    }
     free(hs->buckets);
     free(hs);
 
@@ -140,13 +124,19 @@ int hs_destroy(const HashSet hs)
 
 bool hs_contains(const HashSet hs, const void *key)
 {
-    const size_t hash = hs->hash_func(key, hs->key_size) % hs->capacity;
-    for (Bucket *bucket = hs->buckets[hash]; bucket != NULL; bucket = bucket->next)
+    size_t hash = hs->hash_func(key, hs->key_size) % hs->capacity;
+    const size_t start_hash = hash;
+    Bucket *bucket = hs->buckets + hash;
+
+    while (bucket->status != TOMBSTONE)
     {
-        if (bucket->status == ACTIVE && memcmp(bucket->key, key, hs->key_size) == 0)
+        if (memcmp(bucket->key, key, hs->key_size) == 0)
         {
             return true;
         }
+        hash = (hash + 1) % hs->capacity;
+        bucket = hs->buckets + hash;
+        if (bucket == hs->buckets + start_hash) break;
     }
 
     return false;
@@ -158,19 +148,30 @@ int hs_add(const HashSet hs, const void *key)
         if (hs_resize(hs) != 0)
             return 1;
 
-    const size_t hash = hs->hash_func(key, hs->key_size) % hs->capacity;
-    for (Bucket *bucket = hs->buckets[hash]; bucket != NULL; bucket = bucket->next)
+    size_t hash = hs->hash_func(key, hs->key_size) % hs->capacity;
+    const size_t start_hash = hash;
+    Bucket *bucket = hs->buckets + hash;
+
+    while (bucket->status != TOMBSTONE && memcmp(bucket->key, key, hs->key_size) == 0)
     {
-        if (memcmp(bucket->key, key, hs->key_size) == 0)
+        hash = (hash + 1) % hs->capacity;
+        bucket = hs->buckets + hash;
+        if (bucket == hs->buckets + start_hash)
         {
-            bucket->status = ACTIVE;
-            return 0;
+            return 1;
         }
     }
 
-    Bucket *bucket    = create_bucket(key, hs->key_size, hash);
-    bucket->next      = hs->buckets[hash];
-    hs->buckets[hash] = bucket;
+    if (bucket->status == ACTIVE && memcmp(bucket->key, key, hs->key_size) == 0)
+    {
+        memcpy(bucket->key, key, hs->key_size);
+
+        return 0;
+    }
+
+    bucket->status = ACTIVE;
+    bucket->hash = hash;
+    memcpy(bucket->key, key, hs->key_size);
     hs->size++;
 
     return 0;
@@ -183,26 +184,45 @@ size_t hs_size(const HashSet hs)
 
 int hs_remove(const HashSet hs, const void *key)
 {
-    const size_t hash = hs->hash_func(key, hs->key_size) % hs->capacity;
-    Bucket *prev      = NULL;
-    for (Bucket *bucket = hs->buckets[hash]; bucket != NULL; bucket = bucket->next)
+    const size_t init_hash = hs->hash_func(key, hs->key_size) % hs->capacity;
+    size_t current_hash = init_hash;
+    Bucket *bucket = hs->buckets + init_hash;
+
+    while (bucket->status != TOMBSTONE)
     {
         if (memcmp(bucket->key, key, hs->key_size) == 0)
         {
-            if (prev == NULL)
-            {
-                hs->buckets[hash] = bucket->next;
-            }
-            else
-            {
-                prev->next = bucket->next;
-            }
             bucket->status = TOMBSTONE;
             hs->size--;
 
+            size_t next_hash = (current_hash + 1) % hs->capacity;
+            Bucket *next_bucket = hs->buckets + next_hash;
+
+            while (next_bucket->status == ACTIVE)
+            {
+                const size_t next_original_hash = hs->hash_func(next_bucket->key, hs->key_size) % hs->capacity;
+
+                if ((next_original_hash <= current_hash && current_hash < next_hash) ||
+                    next_hash < next_original_hash && next_original_hash <= current_hash)
+                {
+                    memcpy(bucket, next_bucket, hs->bucket_size);
+
+                    next_bucket->status = TOMBSTONE;
+
+                    current_hash = next_hash;
+                    bucket = hs->buckets + current_hash;
+                }
+                next_hash = (next_hash + 1) % hs->capacity;
+                next_bucket = hs->buckets + next_hash;
+            }
+
             return 0;
         }
-        prev = bucket;
+
+        current_hash = (current_hash + 1) % hs->capacity;
+        bucket = hs->buckets + current_hash;
+
+        if (current_hash == init_hash) break;
     }
 
     return 1;
