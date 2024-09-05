@@ -138,7 +138,7 @@ int hs_remove(HashSet hs, const void *key);
 | Operation   | Average Time (100,000 elements) |
 |-------------|---------------------------------|
 | Insertion   | 0.001872 seconds                |
-| Look up     | 0.001362 seconds                |
+| Lookup      | 0.001362 seconds                |
 | Deletion    | 0.001498 seconds                |
 
 ### C++'s std::unordered_set
