@@ -12,7 +12,7 @@
 #define MAX_CAPACITY (1 << 30)
 #define LOAD_FACTOR 0.75
 
-typedef enum { ACTIVE, TOMBSTONE } BucketStatus;
+typedef enum { TOMBSTONE, ACTIVE } BucketStatus;
 
 typedef struct Bucket
 {
@@ -203,7 +203,7 @@ int hs_remove(const HashSet hs, const void *key)
             size_t next_hash    = (current_hash + 1) % hs->capacity;
             Bucket *next_bucket = get_bucket(hs, next_hash);
 
-            while (next_bucket->status == ACTIVE)
+            while (next_bucket->status != TOMBSTONE)
             {
                 const size_t next_original_hash = hs->hash_func(next_bucket->key, hs->key_size) % hs->capacity;
 
