@@ -121,6 +121,7 @@ HashSet hs_create(const size_t hs_capacity, const size_t key_size, const hash ha
 
 int hs_destroy(const HashSet hs)
 {
+    if(hs == NULL) return 1;
     free(hs->buckets);
     free(hs);
 
