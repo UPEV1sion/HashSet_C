@@ -182,6 +182,7 @@ int hs_remove(HashSet hs, const void *key);
 Here is a basic example demonstrating how to use the `HashSet` functions:
 
 ```c
+#include <stdio.h>
 #include "HashSet.h"
 
 int main()
