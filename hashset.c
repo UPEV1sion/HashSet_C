@@ -32,7 +32,7 @@ struct HashSet
     Bucket *buckets;
 };
 
-static size_t _hash(const void *key, const size_t key_size)
+static size_t default_hash(const void *key, const size_t key_size)
 {
     const unsigned char *data = key;
     size_t hash               = 5381;
@@ -100,7 +100,7 @@ HashSet hs_create(const size_t hs_capacity, const size_t key_size, const hash ha
     const HashSet hs = malloc(sizeof(*hs));
     assert(hs != NULL);
 
-    hs->hash_func   = hash_func == NULL ? _hash : hash_func;
+    hs->hash_func   = hash_func == NULL ? default_hash : hash_func;
     hs->capacity    = (hs_capacity < MIN_CAPACITY) ? MIN_CAPACITY : hs_capacity;
     hs->bucket_size = sizeof(Bucket) + key_size;
     hs->buckets     = malloc(hs->capacity * hs->bucket_size);
